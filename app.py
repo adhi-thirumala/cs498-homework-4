@@ -5,9 +5,9 @@ from neo4j import GraphDatabase
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import avg, col, count, round as spark_round
 
-NEO4J_URI = "bolt://<your_vm_external_ip>:7687"
+NEO4J_URI = "bolt://34.56.251.47:7687"
 NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "<your_password>"
+NEO4J_PASSWORD = "passwordpassword"
 
 CSV_PATH = "taxi_trips_clean.csv"
 
@@ -18,7 +18,9 @@ def get_spark() -> SparkSession:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    app.state.driver = GraphDatabase.driver(
+        NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD)
+    )
     app.state.spark = get_spark()
     yield
     app.state.driver.close()
@@ -63,7 +65,9 @@ def top_companies(n: int = Query(..., ge=1)):
         """,
         n=n,
     )
-    return {"companies": [{"name": r["name"], "trip_count": r["trip_count"]} for r in recs]}
+    return {
+        "companies": [{"name": r["name"], "trip_count": r["trip_count"]} for r in recs]
+    }
 
 
 @app.get("/high-fare-trips")
@@ -100,7 +104,8 @@ def co_area_drivers(driver_id: str):
     )
     return {
         "co_area_drivers": [
-            {"driver_id": r["driver_id"], "shared_areas": r["shared_areas"]} for r in recs
+            {"driver_id": r["driver_id"], "shared_areas": r["shared_areas"]}
+            for r in recs
         ]
     }
 
@@ -136,7 +141,9 @@ def area_stats(area_id: int):
         "area_id": area_id,
         "trip_count": int(row["trip_count"]),
         "avg_fare": float(row["avg_fare"]) if row["avg_fare"] is not None else 0.0,
-        "avg_trip_seconds": int(row["avg_trip_seconds"]) if row["avg_trip_seconds"] is not None else 0,
+        "avg_trip_seconds": int(row["avg_trip_seconds"])
+        if row["avg_trip_seconds"] is not None
+        else 0,
     }
 
 
@@ -165,6 +172,7 @@ def company_compare(company1: str, company2: str):
     df = spark.read.csv(CSV_PATH, header=True, inferSchema=True)
     df = df.withColumn("fare_per_minute", col("fare") / (col("trip_seconds") / 60.0))
     df.createOrReplaceTempView("trips")
+
     def _esc(s: str) -> str:
         return s.replace("'", "''")
 
