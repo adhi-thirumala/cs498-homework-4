@@ -15,14 +15,10 @@ uv run preprocess.py
 This writes per-company summary records to `processed_data/` as newline-delimited JSON.
 
 ### Screenshot — `processed_data/` contents and a part file
+!(image1.png)
+!(image2.png)
 
-<!-- Replace this section with a screenshot after running preprocess.py -->
-<!-- Suggested commands to capture:
-     ls -la processed_data/
-     cat processed_data/part-*.json | head
--->
 
-![processed_data folder and part file](processed_data_screenshot.png)
 
 ## Part 2.2 — Run the API
 

@@ -1,0 +1,50 @@
+Q1: FDB splits the system so that the write path (TMS) and the read path (SS)
+can be scaled independently — a read-heavy workload just needs more
+StorageServers, while a write-heavy one needs more commit proxies, resolvers,
+and log servers. The TMS is in-memory and handles sequencing, conflict
+detection, and logging of new transactions, while the SS persists the
+committed data on disk and serves all client reads. Decoupling them also
+makes recovery simpler, because the stateful storage layer keeps running
+even when the (mostly stateless) transaction system is torn down and
+rebuilt.
+
+Q2: Conflict detection is done by the Resolver(s), not by the storage layer.
+When a client commits, the commit proxy first asks the Sequencer (master)
+for a commit version, then forwards the transaction's read and write
+conflict ranges to the resolvers along with that commit version. Each
+resolver keeps the last ~5 seconds of committed write ranges in memory and
+checks whether anything in this transaction's read set was written between
+its read version and its commit version; if so, the transaction is aborted
+with a not_committed error before any mutations are sent to the log
+servers.
+
+Q3: The read version is the database snapshot the transaction reads from —
+every read in the transaction is served as of that version, so the client
+sees a consistent point-in-time view even though other transactions are
+committing concurrently. It's also what conflict detection is anchored on:
+a transaction conflicts only if some other transaction with a commit
+version greater than this read version (but less than our commit version)
+wrote to a key we read. Because read versions are issued by the Sequencer
+and are guaranteed to be at least as large as any previously committed
+version the client could have observed, FDB can give strict
+serializability without readers ever blocking writers.
+
+Q4: A snapshot read returns the value at the transaction's read version just
+like a normal read, but it is not added to the transaction's read conflict
+set, so a concurrent write to that key will not cause this transaction to
+abort at commit time. You'd use a snapshot read when you don't actually
+need serializable semantics on that particular key — e.g. reading a
+counter or some metadata for an estimate, or doing a wide range scan where
+you only care about a small subset and don't want unrelated writes in the
+range to force retries. The trade-off is that you weaken isolation for
+that read in exchange for fewer conflicts and fewer retries.
+
+Q5: During normal operation the StorageServers continuously pull mutations
+from the LogServers and apply them in the background, so the persistent
+state is always only a few seconds behind the log tail. That means on
+recovery, FDB doesn't have to synchronously replay a redo log before the
+database is usable: the new transaction system only needs to find the end
+of the previous log, lock out the old one, and start accepting commits,
+while the StorageServers asynchronously finish draining whatever was left
+on the old LogServers. Because the redo replay is off the critical path,
+the cluster can resume serving transactions very quickly after a failure.
